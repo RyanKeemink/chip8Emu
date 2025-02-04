@@ -2,7 +2,7 @@
 
 class RAM:
     memory = [0 for i in range(4096)]
-    pc = 0
+    pc = 512
 
     def __init__(self):
         font =  [0xF0, 0x90, 0x90, 0x90, 0xF0, # 0
@@ -26,11 +26,20 @@ class RAM:
         for value in font:
             self.memory[adress] = value
             adress +=1
+        temppc = self.pc
+        with open("IBM Logo.ch8", "rb") as f:
+            while (byte := f.read(1)):
+                self.memory[temppc] = ord(byte)
+                temppc +=1
+        
 
 
     def readMem(self):
-        pc +=1
+        self.pc +=1
         return self.memory[self.pc-1]
+    
+    def readMemLoc(self,loc):
+        return self.memory[loc]
     
     def writemem(self,data,adress):
         self.memory[adress] = data
