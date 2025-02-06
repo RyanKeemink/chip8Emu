@@ -15,19 +15,19 @@ class CPU:
         hz = (1000000000/60)
         diffrence = time.time_ns() - self.currtime
         cycles = diffrence // hz
-        self.delayTimer = max(0, self.delayTimer -cycles)
-        self.soundTimer = max(0, self.soundTimer -cycles)
+        self.delayTimer = int(max(0, self.delayTimer -cycles))
+        self.soundTimer = int(max(0, self.soundTimer -cycles))
         self.currtime += (cycles*hz)
 
-    def CPUcycle(self):
+    def CPUcycle(self, key):
         self.timerHandler()
 
         fetch = (self.ram.readMem(), self.ram.readMem())
-        return self.execute(fetch)
+        return self.execute(fetch, key)
 
     def overflow(self,register,flag =True):
         if self.var[register] > 255:
-            self.var[register] - 255
+            self.var[register] -= 256
             return self.setFlag()
         return self.setFlag(False)
 
@@ -35,7 +35,7 @@ class CPU:
     
     def underflow(self,register,flag =True):
         if self.var[register] < 0 :
-            self.var[register] + 255
+            self.var[register] += 256
             return self.setFlag(False)
         self.setFlag()
 
@@ -45,14 +45,17 @@ class CPU:
 
 
 
-    def execute(self, data):
-
+    def execute(self, data, key):
+        
+      
         nibbles = (int(data[0]) & 0xF0,int(data[0]) & 0x0F, (int(data[1]) & 0xF0)>>4,int(data[1]) & 0x0F)
+      
 
         if  nibbles[0] == 0x00:
-            if nibbles[2] == 0x0e:
-                if nibbles[3] == 0x0e:
+            if data[1] == 0xee:
+                    
                     self.ram.setPC(self.stack.pop())
+            else:
                 return "clean"
             
         elif nibbles[0] == 0x10:
@@ -61,19 +64,21 @@ class CPU:
 
         elif nibbles[0] == 0x20:
             loc = (nibbles[1] << 8 )+ data[1]
-            self.stack.append(loc)
+            
+            self.stack.append(self.ram.pc)
             self.ram.setPC(loc)
+            
 
         elif nibbles[0] == 0x30:
-            if self.var.nibbles[1] == data[1]:
+            if self.var[nibbles[1]] == data[1]:
                 self.ram.incPC(2)
 
         elif nibbles[0] == 0x40:
-            if not self.var.nibbles[1] == data[1]:
+            if not self.var[nibbles[1]] == data[1]:
                 self.ram.incPC(2)
 
         elif nibbles[0] == 0x50:
-            if not self.var[nibbles[1]] == self.var[nibbles[2]] :
+            if  self.var[nibbles[1]] == self.var[nibbles[2]]:
                 self.ram.incPC(2)
 
         elif nibbles[0] == 0x60:
@@ -81,7 +86,10 @@ class CPU:
 
         elif nibbles[0] == 0x70:
             self.var[nibbles[1]] += data[1]
+
             self.overflow(nibbles[1],False)
+    
+
 
         elif nibbles[0] == 0x80:
             if nibbles[3] == 0x00:
@@ -97,16 +105,19 @@ class CPU:
                 self.overflow(nibbles[1])
             elif nibbles[3] == 0x05:
                 self.var[nibbles[1]] -= self.var[nibbles[2]]
-                self.underflow()
+                self.underflow(nibbles[1])
             elif nibbles[3] == 0x06:
-                self.var[nibbles[1]] = self.var[nibbles[1]] < 1
-                self.overflow()
+                
+                self.setFlag(self.var[nibbles[1]]%2)
+                self.var[nibbles[1]] = self.var[nibbles[1]] >> 1
+                
             elif nibbles[3] == 0x07:
                 self.var[nibbles[1]] = self.var[nibbles[2]] - self.var[nibbles[1]]
-                self.underflow()
+                self.underflow(nibbles[1])
             elif nibbles[3] == 0x0E:
-                self.setFlag(self.var[nibbles[1]]%2)
-                self.var[nibbles[1]] = self.var[nibbles[1]] > 1
+                
+                self.var[nibbles[1]] = self.var[nibbles[1]] << 1
+                self.overflow(nibbles[1])
             
 
 
@@ -123,16 +134,59 @@ class CPU:
             self.var[nibbles[1]] = random.randint(0,255) &  data[1]
             
         elif nibbles[0] == 0xD0:
-            print(nibbles)
+        
             length = nibbles[3]
             data = []
             for i in range(length):
                 data.append(self.ram.readMemLoc(self.I+i))
-            print (self.var[nibbles[1]], self.var[nibbles[2]],data)
             return (self.var[nibbles[1]], self.var[nibbles[2]],data)
+        
         elif nibbles[0] == 0xE0:
-            pass
+            if nibbles[3] == 0x0E:
+                if key == self.var[nibbles[1]]:
+                    self.ram.incPC(2)
+            else:
+                if key != self.var[nibbles[1]]:
+                    self.ram.incPC(2)
+
         elif nibbles[0] == 0xF0:
-            pass
+            if data[1] == 0x07:
+                self.var[nibbles[1]] = self.delayTimer
+            if data[1] == 0x15:
+                self.delayTimer = self.var[nibbles[1]]
+            if data[1] == 0x18:
+                self.soundTimer = self.var[nibbles[1]]
+            if data[1] == 0x1e:
+                self.I += self.var[nibbles[1]]
+            if data[1] == 0x0a:
+                if key != None:
+                    self.var[nibbles[1]] = key
+                else:
+                    self.ram.incPC(-2)
+            if data[1] == 0x29:
+                shift = self.var[nibbles[1]] & 0x0f
+                i = 0x050 + shift
+            if data[1] == 0x33:
+                num = self.var[nibbles[1]]
+
+                self.ram.writemem(num // 100, self.I)
+                self.ram.writemem((num %100) // 10, self.I+1)
+                self.ram.writemem(num % 10,self.I+2)
+                
+            if data[1] == 0x55:
+                for i in range(nibbles[1]+1):
+                    self.ram.writemem(self.var[i], self.I+i)
+
+            if data[1] == 0x65:
+                for i in range(nibbles[1]+1):
+                    self.var[i]= self.ram.readMemLoc(self.I+i)
+           
+
+
+            
+
+
+            
+            
 
 

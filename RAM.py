@@ -27,7 +27,7 @@ class RAM:
             self.memory[adress] = value
             adress +=1
         temppc = self.pc
-        with open("IBM Logo.ch8", "rb") as f:
+        with open("6-keypad.ch8", "rb") as f:
             while (byte := f.read(1)):
                 self.memory[temppc] = ord(byte)
                 temppc +=1
